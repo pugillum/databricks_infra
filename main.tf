@@ -41,6 +41,8 @@ resource "azurerm_subnet" "public" {
       name = "Microsoft.Databricks/workspaces"
     }
   }
+
+  service_endpoints = ["Microsoft.Storage"]
 }
 
 # Subnet private
@@ -96,14 +98,32 @@ resource "azurerm_storage_account" "example" {
   account_replication_type = "LRS"
   is_hns_enabled           = true
 
-  network_rules {
-    default_action             = "Deny"
-    virtual_network_subnet_ids = [azurerm_subnet.private.id]
-  }
-
   tags = {
     Environment = "Development"
   }
+}
+
+resource "azurerm_storage_container" "example" {
+  name                  = "data"
+  storage_account_name  = azurerm_storage_account.example.name
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_account_network_rules" "netrules" {
+  resource_group_name  = data.azurerm_resource_group.rg.name
+  storage_account_name = azurerm_storage_account.example.name
+
+  default_action             = "Deny"
+  virtual_network_subnet_ids = [azurerm_subnet.private.id, azurerm_subnet.public.id]
+  bypass = [
+    "Metrics",
+    "Logging",
+    "AzureServices"
+  ]
+
+  depends_on = [
+    azurerm_storage_container.example,
+  ]
 }
 
 # Databricks workspace
