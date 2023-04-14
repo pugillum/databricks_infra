@@ -1,0 +1,8 @@
+tenant_id: {{ tenant_id }}
+client_id: {{ client_id }}
+secret_scope: {{ secret_scope }}
+client_secret_ref: {{ client_secret_ref }}
+
+mounts:
+  - source: "abfss://<container name>@<storage account name>.dfs.core.windows.net"
+    mount_point: "<mount name>"

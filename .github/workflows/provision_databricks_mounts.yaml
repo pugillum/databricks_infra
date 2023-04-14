@@ -1,0 +1,87 @@
+name: Databricks mounts reusable
+
+on:
+  workflow_call:
+    inputs:
+      client_id:
+        required: true
+        type: string
+      tenant_id:
+        required: true
+        type: string
+      subscription_id:
+        required: true
+        type: string
+      databricks_url:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+      resource_group:
+        required: true
+        type: string
+      databricks_resource_name:
+        required: true
+        type: string
+      cufc_storage_account_name:
+        required: true
+        type: string
+    secrets:
+      client_secret:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-20.04
+    defaults:
+      run:
+        working-directory: scripts
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install Packages
+        run: pip install databricks-cli dbx jinja2-cli
+
+      - name: Authenticate with Azure
+        run: |
+          az login --service-principal -u "${{ inputs.client_id }}" -p='${{ secrets.client_secret }}' --tenant "${{ inputs.tenant_id }}"
+          az account set --subscription ${{ inputs.subscription_id }}
+
+      # TODO: Once service principals are provisioned as Databricks Workspace Admins we can use this
+      # - name: Configure Databricks CLI
+      #   run: |
+      #     export DATABRICKS_AAD_TOKEN=$(az account get-access-token --resource 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d | jq .accessToken --raw-output)
+      #     databricks configure --host ${{ inputs.databricks_url }} --aad-token
+      #     databricks fs ls
+
+      - name: Configure Databricks CLI
+        env:
+          SUBSCRIPTION: ${{ inputs.subscription_id }}
+          RESOURCE_GROUP: ${{ inputs.resource_group }}
+          DATABRICKS_URL: ${{ inputs.databricks_url }}
+          DATABRICKS_RESOURCE_NAME: ${{ inputs.databricks_resource_name }}
+        run: bash configure_databricks_cli.sh
+
+      - name: Prepare config
+        run: |
+          jinja2 \
+          -D tenant_id="${{ inputs.tenant_id }}" \
+          -D client_id="${{ inputs.client_id }}" \
+          -D secret_scope="default-secret-scope" \
+          -D client_secret_ref="client_secret" \
+          ./config/config.yaml.j2 > ./config/config.yaml
+          cat ./config/config.yaml
+
+      - name: Provision mounts
+        run: |
+          dbx configure
+          dbx deploy --deployment-file="provision_mounts.yaml" --no-rebuild --no-package --files-only
+          dbx launch --job="provision-mounts" --as-run-submit --trace
